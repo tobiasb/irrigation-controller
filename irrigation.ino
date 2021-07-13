@@ -19,7 +19,7 @@ uint8_t relayPin = D1;
 
 void setup() {
   Serial.begin(115200);
-  digitalWrite(relayPin, HIGH);
+  digitalWrite(relayPin, LOW);
   pinMode(relayPin, OUTPUT);
 
   WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS);
@@ -47,35 +47,23 @@ void setup() {
   Serial.println("HTTP server started");
 }
 
-bool triggerStatus = false;
-unsigned long triggerDurationSeconds = 0;
-unsigned long lastTriggerStart = 0;
+unsigned int irrigateUntilMs = 0;
 
 void loop() 
 {
   server.handleClient();
 
-  if (triggerStatus)
+  if (irrigateUntilMs > 0 && millis() > irrigateUntilMs)
   {
-    if (lastTriggerStart == 0)
-    {
-      lastTriggerStart = millis();
-      Serial.println("ON");
-      digitalWrite(relayPin, LOW);
-    }
-    else if (millis() > lastTriggerStart + (triggerDurationSeconds * 1000))
-    {
       Serial.println("OFF");
-      triggerStatus = false;
-      lastTriggerStart = 0;
-      digitalWrite(relayPin, HIGH);
-    }
+      irrigateUntilMs = 0;
+      digitalWrite(relayPin, LOW);
   }
 }
 
 void handle_trigger() 
 {
-  if (triggerStatus)
+  if (irrigateUntilMs > 0)
   {
     server.send(400, "text/plain", "Already triggered");
     return;
@@ -94,15 +82,17 @@ void handle_trigger()
     server.send(400, "text/plain", "seconds missing");
     return;
   }
-  triggerDurationSeconds = server.arg("seconds").toInt();
-
+  
+  unsigned long triggerDurationSeconds = server.arg("seconds").toInt();
   if (triggerDurationSeconds <= 0)
   {
     server.send(400, "text/plain", "Invalid duration");
     return;
   }
 
-  triggerStatus = true;
+  irrigateUntilMs = millis() + (triggerDurationSeconds * 1000);
+  Serial.println("ON");
+  digitalWrite(relayPin, HIGH);
  
   server.send(200, "text/plain", "");
 }
